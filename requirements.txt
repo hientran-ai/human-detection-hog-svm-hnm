@@ -1,0 +1,11 @@
+# Computer Vision & Image Processing
+opencv-python
+
+# Machine Learning & Data processing
+scikit-learn
+numpy
+joblib
+
+# Utilities (Progress bar, visualization)
+matplotlib
+tqdm
