@@ -1,67 +1,54 @@
-# Filepath: src/utils/nms.py
+"""Non-maximum suppression for object detections."""
 
 import numpy as np
 
-def non_max_suppression(boxes, probs=None, overlapThresh=0.3):
+
+def non_max_suppression(boxes, probs=None, overlap_thresh=0.3, **legacy_kwargs):
+    """Suppress lower-scoring boxes whose IoU exceeds ``overlap_thresh``.
+
+    Boxes use ``[x1, y1, x2, y2]`` with exclusive bottom-right coordinates.
+    ``overlapThresh`` remains accepted for compatibility with earlier code.
     """
-    Thuật toán Non-Maximum Suppression (NMS) để loại bỏ các bounding box chồng chéo.
-    
-    Args:
-        boxes (list or np.ndarray): Danh sách các box [xmin, ymin, xmax, ymax].
-        probs (list or np.ndarray): Điểm tự tin (confidence score) của từng box.
-        overlapThresh (float): Ngưỡng IoU để quyết định xóa box (thường là 0.3 - 0.5).
-        
-    Returns:
-        np.ndarray: Danh sách các box được giữ lại.
-    """
-    # Nếu không có box nào, trả về mảng rỗng
-    if len(boxes) == 0:
-        return []
+    if "overlapThresh" in legacy_kwargs:
+        overlap_thresh = legacy_kwargs.pop("overlapThresh")
+    if legacy_kwargs:
+        raise TypeError(f"Unexpected arguments: {', '.join(legacy_kwargs)}")
+    if not 0 <= overlap_thresh <= 1:
+        raise ValueError("overlap_thresh must be between 0 and 1")
 
-    # Chuyển đổi sang numpy array và ép kiểu float
-    if type(boxes).__module__ != np.__name__:
-        boxes = np.array(boxes)
-    boxes = boxes.astype("float")
+    boxes_array = np.asarray(boxes, dtype=float)
+    if boxes_array.size == 0:
+        return np.empty((0, 4), dtype=int)
+    if boxes_array.ndim != 2 or boxes_array.shape[1] != 4:
+        raise ValueError("boxes must have shape (n, 4)")
 
-    # Lấy tọa độ
-    x1 = boxes[:, 0]
-    y1 = boxes[:, 1]
-    x2 = boxes[:, 2]
-    y2 = boxes[:, 3]
+    scores = (
+        np.asarray(probs, dtype=float)
+        if probs is not None
+        else np.arange(len(boxes_array), dtype=float)
+    )
+    if scores.shape != (len(boxes_array),):
+        raise ValueError("probs must contain one score per box")
 
-    # Tính diện tích của các boxes
-    area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    x1, y1, x2, y2 = boxes_array.T
+    areas = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
+    order = np.argsort(scores)
+    keep = []
 
-    # Sắp xếp các box theo điểm tự tin (probs) từ thấp đến cao
-    if probs is not None:
-        if type(probs).__module__ != np.__name__:
-            probs = np.array(probs)
-        idxs = np.argsort(probs)
-    else:
-        idxs = np.argsort(y2)
+    while order.size:
+        current = order[-1]
+        keep.append(current)
+        remaining = order[:-1]
+        if not remaining.size:
+            break
 
-    pick = []
+        inter_x1 = np.maximum(x1[current], x1[remaining])
+        inter_y1 = np.maximum(y1[current], y1[remaining])
+        inter_x2 = np.minimum(x2[current], x2[remaining])
+        inter_y2 = np.minimum(y2[current], y2[remaining])
+        intersection = np.maximum(0, inter_x2 - inter_x1) * np.maximum(0, inter_y2 - inter_y1)
+        union = areas[current] + areas[remaining] - intersection
+        iou = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
+        order = remaining[iou <= overlap_thresh]
 
-    # Vòng lặp xóa các box chồng chéo
-    while len(idxs) > 0:
-        last = len(idxs) - 1
-        i = idxs[last]
-        pick.append(i) # Giữ lại box có điểm cao nhất
-
-        # Tính toán tọa độ vùng giao nhau
-        xx1 = np.maximum(x1[i], x1[idxs[:last]])
-        yy1 = np.maximum(y1[i], y1[idxs[:last]])
-        xx2 = np.minimum(x2[i], x2[idxs[:last]])
-        yy2 = np.minimum(y2[i], y2[idxs[:last]])
-
-        # Tính chiều rộng, chiều cao vùng giao nhau
-        w = np.maximum(0, xx2 - xx1 + 1)
-        h = np.maximum(0, yy2 - yy1 + 1)
-
-        # Tính tỷ lệ chồng chéo (IoU overlap)
-        overlap = (w * h) / area[idxs[:last]]
-
-        # Xóa các box có độ chồng chéo lớn hơn ngưỡng overlapThresh
-        idxs = np.delete(idxs, np.concatenate(([last], np.where(overlap > overlapThresh)[0])))
-
-    return boxes[pick].astype("int")
+    return boxes_array[keep].astype(int)

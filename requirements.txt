@@ -1,11 +1,10 @@
 # Computer Vision & Image Processing
-opencv-python
+opencv-python>=4.8,<5
 
 # Machine Learning & Data processing
-scikit-learn
+scikit-learn==1.8.0  # Matches the bundled joblib model artifacts.
 numpy
 joblib
 
-# Utilities (Progress bar, visualization)
-matplotlib
+# Utilities
 tqdm
